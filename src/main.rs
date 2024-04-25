@@ -6,7 +6,7 @@ use std::os::unix::fs::PermissionsExt as _; /* not unix specific, just only for 
 // Not async due to services() being used in many closures, and async closures
 // are not stable as of writing This is the case for every other occurence of
 // sync Mutex/RwLock, except for database related ones
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::{any::Any, io, net::SocketAddr, sync::atomic, time::Duration};
 
 use api::ruma_wrapper::{Ruma, RumaResponse};
@@ -79,7 +79,7 @@ struct Server {
 
 	runtime: tokio::runtime::Runtime,
 
-	tracing_reload_handle: reload::Handle<EnvFilter, Registry>,
+	tracing_reload_handle: LogLevelReloadHandle,
 
 	#[cfg(feature = "sentry_telemetry")]
 	_sentry_guard: Option<sentry::ClientInitGuard>,
@@ -547,7 +547,32 @@ fn init_sentry(config: &Config) -> sentry::ClientInitGuard {
 	))
 }
 
-fn init_tracing_sub(config: &Config) -> reload::Handle<EnvFilter, Registry> {
+// We need to store a reload::Handle value, but can't name it's type explicitly
+// because the S type parameter depends on the subscriber's previous layers. In
+// our case, this includes unnameable 'impl Trait' types.
+//
+// This is fixed[1] in the unreleased tracing-subscriber from the master branch,
+// which removes the S parameter. Unfortunately can't use it without pulling in
+// a version of tracing that's incompatible with the rest of our deps.
+//
+// To work around this, we define an trait without the S paramter that forwards
+// to the reload::Handle::reload method, and then store the handle as a trait
+// object.
+//
+// [1]: https://github.com/tokio-rs/tracing/pull/1035/commits/8a87ea52425098d3ef8f56d92358c2f6c144a28f
+trait ReloadHandle<L> {
+	fn reload(&self, new_value: L) -> Result<(), reload::Error>;
+}
+
+impl<L, S> ReloadHandle<L> for reload::Handle<L, S> {
+	fn reload(&self, new_value: L) -> Result<(), reload::Error> { reload::Handle::reload(self, new_value) }
+}
+
+// reload::Handle impls Clone, but we can't use that because Clone isn't
+// object-safe. So, Arc.
+type LogLevelReloadHandle = Arc<dyn ReloadHandle<EnvFilter> + Send + Sync>;
+
+fn init_tracing_sub(config: &Config) -> LogLevelReloadHandle {
 	let registry = Registry::default();
 	let fmt_layer = tracing_subscriber::fmt::Layer::new();
 	let filter_layer = match EnvFilter::try_new(&config.log) {
@@ -560,33 +585,29 @@ fn init_tracing_sub(config: &Config) -> reload::Handle<EnvFilter, Registry> {
 
 	let (reload_filter, reload_handle) = reload::Layer::new(filter_layer);
 
-	#[cfg(feature = "sentry_telemetry")]
-	let sentry_layer = sentry_tracing::layer();
+	let subscriber = registry;
 
-	let subscriber;
-
-	#[allow(clippy::unnecessary_operation)] // error[E0658]: attributes on expressions are experimental
-	#[cfg(feature = "sentry_telemetry")]
-	{
-		subscriber = registry
-			.with(reload_filter)
-			.with(fmt_layer)
-			.with(sentry_layer);
+	#[cfg(feature = "console-subscriber")]
+	let subscriber = {
+		let console_layer = console_subscriber::spawn();
+		subscriber.with(console_layer)
 	};
 
-	#[allow(clippy::unnecessary_operation)] // error[E0658]: attributes on expressions are experimental
-	#[cfg(not(feature = "sentry_telemetry"))]
-	{
-		subscriber = registry.with(reload_filter).with(fmt_layer);
-	};
+	let subscriber = subscriber.with(fmt_layer.with_filter(reload_filter));
 
+	#[cfg(feature = "sentry_telemetry")]
+	// TODO: get sentry working again
+	/* let subscriber = {
+		let sentry_layer = sentry_tracing::layer();
+		subscriber.with(sentry_layer)
+	}; */
 	tracing::subscriber::set_global_default(subscriber).unwrap();
 
-	reload_handle
+	Arc::new(reload_handle)
 }
 
 #[cfg(feature = "perf_measurements")]
-fn init_tracing_jaeger(config: &Config) -> reload::Handle<EnvFilter, Registry> {
+fn init_tracing_jaeger(config: &Config) -> LogLevelReloadHandle {
 	opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
 	let tracer = opentelemetry_jaeger::new_agent_pipeline()
 		.with_auto_split_batch(true)
@@ -609,11 +630,12 @@ fn init_tracing_jaeger(config: &Config) -> reload::Handle<EnvFilter, Registry> {
 
 	tracing::subscriber::set_global_default(subscriber).unwrap();
 
-	reload_handle
+	Arc::new(reload_handle)
 }
 
+// TODO: tokio-console here?
 #[cfg(feature = "perf_measurements")]
-fn init_tracing_flame(_config: &Config) -> reload::Handle<EnvFilter, Registry> {
+fn init_tracing_flame(_config: &Config) -> LogLevelReloadHandle {
 	let registry = Registry::default();
 	let (flame_layer, _guard) = tracing_flame::FlameLayer::with_file("./tracing.folded").unwrap();
 	let flame_layer = flame_layer.with_empty_samples(false);
@@ -626,7 +648,7 @@ fn init_tracing_flame(_config: &Config) -> reload::Handle<EnvFilter, Registry> {
 
 	tracing::subscriber::set_global_default(subscriber).unwrap();
 
-	reload_handle
+	Box::new(reload_handle)
 }
 
 // This is needed for opening lots of file descriptors, which tends to
