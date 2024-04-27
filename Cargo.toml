@@ -180,6 +180,9 @@ optional = true
 [dependencies.tracing-flame]
 version = "0.2.0"
 optional = true
+[dependencies.tracing-chrome]
+version = "0.7.2"
+optional = true
 [dependencies.tracing-opentelemetry]
 version = "0.22.0"
 optional = true
@@ -382,6 +385,7 @@ axum_dual_protocol = ["axum-server-dual-protocol"]
 perf_measurements = [
     "opentelemetry",
     "tracing-flame",
+    "tracing-chrome",
     "tracing-opentelemetry",
     "opentelemetry_sdk",
     "opentelemetry-jaeger",

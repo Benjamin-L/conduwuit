@@ -181,6 +181,14 @@ pub(crate) struct Config {
 	#[serde(default = "default_tracing_flame_output_path")]
 	#[cfg(feature = "perf_measurements")]
 	pub(crate) tracing_flame_output_path: String,
+	#[cfg(feature = "perf_measurements")]
+	pub(crate) tracing_chrome: bool,
+	#[serde(default = "default_tracing_chrome_filter")]
+	#[cfg(feature = "perf_measurements")]
+	pub(crate) tracing_chrome_filter: String,
+	#[serde(default = "default_tracing_chrome_output_path")]
+	#[cfg(feature = "perf_measurements")]
+	pub(crate) tracing_chrome_output_path: String,
 	#[serde(default)]
 	pub(crate) proxy: ProxyConfig,
 	pub(crate) jwt_secret: Option<String>,
@@ -945,6 +953,12 @@ fn default_tracing_flame_filter() -> String { "trace,h2=off".to_owned() }
 
 #[cfg(feature = "perf_measurements")]
 fn default_tracing_flame_output_path() -> String { "./tracing.folded".to_owned() }
+
+#[cfg(feature = "perf_measurements")]
+fn default_tracing_chrome_filter() -> String { "debug".to_owned() }
+
+#[cfg(feature = "perf_measurements")]
+fn default_tracing_chrome_output_path() -> String { "./conduwuit-chrome-trace.json".to_owned() }
 
 fn default_trusted_servers() -> Vec<OwnedServerName> { vec![OwnedServerName::try_from("matrix.org").unwrap()] }
 

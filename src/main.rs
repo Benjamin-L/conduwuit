@@ -85,6 +85,7 @@ struct Server {
 	_sentry_guard: Option<sentry::ClientInitGuard>,
 
 	_tracing_flame_guard: TracingFlameGuard,
+	_tracing_chrome_guard: TracingChromeGuard,
 }
 
 fn main() -> Result<(), Error> {
@@ -478,7 +479,7 @@ fn init(args: clap::Args) -> Result<Server, Error> {
 		None
 	};
 
-	let (tracing_reload_handle, tracing_flame_guard) = init_tracing(&config);
+	let (tracing_reload_handle, tracing_flame_guard, tracing_chrome_guard) = init_tracing(&config);
 
 	config.check()?;
 
@@ -509,6 +510,7 @@ fn init(args: clap::Args) -> Result<Server, Error> {
 		#[cfg(feature = "sentry_telemetry")]
 		_sentry_guard: sentry_guard,
 		_tracing_flame_guard: tracing_flame_guard,
+		_tracing_chrome_guard: tracing_chrome_guard,
 	})
 }
 
@@ -587,10 +589,15 @@ type TracingFlameGuard = Option<tracing_flame::FlushGuard<io::BufWriter<fs::File
 #[cfg(not(feature = "perf_measurements"))]
 type TracingFlameGuard = ();
 
+#[cfg(feature = "perf_measurements")]
+type TracingChromeGuard = Option<tracing_chrome::FlushGuard>;
+#[cfg(not(feature = "perf_measurements"))]
+type TracingChromeGuard = ();
+
 // clippy thinks the filter_layer clones are redundant if the next usage is
 // behind a disabled feature.
 #[allow(clippy::redundant_clone)]
-fn init_tracing(config: &Config) -> (LogLevelReloadHandles, TracingFlameGuard) {
+fn init_tracing(config: &Config) -> (LogLevelReloadHandles, TracingFlameGuard, TracingChromeGuard) {
 	let registry = Registry::default();
 	let fmt_layer = tracing_subscriber::fmt::Layer::new();
 	let filter_layer = match EnvFilter::try_new(&config.log) {
@@ -623,7 +630,7 @@ fn init_tracing(config: &Config) -> (LogLevelReloadHandles, TracingFlameGuard) {
 	};
 
 	#[cfg(feature = "perf_measurements")]
-	let (subscriber, flame_guard) = {
+	let (subscriber, flame_guard, chrome_guard) = {
 		let (flame_layer, flame_guard) = if config.tracing_flame {
 			let flame_filter = match EnvFilter::try_new(&config.tracing_flame_filter) {
 				Ok(flame_filter) => flame_filter,
@@ -645,6 +652,27 @@ fn init_tracing(config: &Config) -> (LogLevelReloadHandles, TracingFlameGuard) {
 			(None, None)
 		};
 
+		let (chrome_layer, chrome_guard) = if config.tracing_chrome {
+			let chrome_filter = match EnvFilter::try_new(&config.tracing_chrome_filter) {
+				Ok(chrome_filter) => chrome_filter,
+				Err(e) => panic!("tracing_chrome_filter config value is invalid: {e}"),
+			};
+
+			let out_file = match fs::File::create(&config.tracing_chrome_output_path) {
+				Ok(file) => file,
+				Err(e) => panic!("failed to open tracing-chrome output file at {}: {e}", &config.tracing_chrome_output_path),
+			};
+			let (chrome_layer, chrome_guard) = tracing_chrome::ChromeLayerBuilder::new()
+				.include_args(true)
+				.trace_style(tracing_chrome::TraceStyle::Async)
+				.writer(out_file)
+				.build();
+			let chrome_layer = chrome_layer.with_filter(chrome_filter);
+			(Some(chrome_layer), Some(chrome_guard))
+		} else {
+			(None, None)
+		};
+
 		let jaeger_layer = if config.allow_jaeger {
 			opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
 			let tracer = opentelemetry_jaeger::new_agent_pipeline()
@@ -661,12 +689,12 @@ fn init_tracing(config: &Config) -> (LogLevelReloadHandles, TracingFlameGuard) {
 			None
 		};
 
-		let subscriber = subscriber.with(flame_layer).with(jaeger_layer);
-		(subscriber, flame_guard)
+		let subscriber = subscriber.with(flame_layer).with(chrome_layer).with(jaeger_layer);
+		(subscriber, flame_guard, chrome_guard)
 	};
 
 	#[cfg(not(feature = "perf_measurements"))]
-	let flame_guard = ();
+	let (flame_guard, chrome_guard) = ((), ());
 
 	tracing::subscriber::set_global_default(subscriber).unwrap();
 
@@ -676,7 +704,7 @@ fn init_tracing(config: &Config) -> (LogLevelReloadHandles, TracingFlameGuard) {
 		 needs access to trace-level events. 'release_max_log_level' must be disabled to use tokio-console."
 	);
 
-	(LogLevelReloadHandles::new(reload_handles), flame_guard)
+	(LogLevelReloadHandles::new(reload_handles), flame_guard, chrome_guard)
 }
 
 // This is needed for opening lots of file descriptors, which tends to
