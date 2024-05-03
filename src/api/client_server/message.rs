@@ -10,7 +10,7 @@ use ruma::{
 		message::{get_message_events, send_message_event},
 	},
 	events::{MessageLikeEventType, StateEventType},
-	RoomId, UserId,
+	RoomId, UInt, UserId,
 };
 use serde_json::{from_str, Value};
 
@@ -159,7 +159,9 @@ pub(crate) async fn get_message_events_route(
 		.lazy_load_confirm_delivery(sender_user, sender_device, &body.room_id, from)
 		.await?;
 
-	let limit = usize::try_from(body.limit).unwrap_or(10).min(100);
+	let limit = usize::try_from(body.limit.min(body.filter.limit.unwrap_or(UInt::MAX)))
+		.unwrap_or(10)
+		.min(100);
 
 	let next_token;
 
