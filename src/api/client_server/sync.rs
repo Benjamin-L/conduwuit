@@ -461,7 +461,11 @@ async fn handle_left_room(
 		};
 
 		State {
-			events: vec![event.to_sync_state_event()],
+			events: if filter.room.state.pdu_event_allowed(&event) {
+				vec![event.to_sync_state_event()]
+			} else {
+				vec![]
+			},
 		}
 	} else {
 		let mut left_state_events = Vec::new();
@@ -524,7 +528,9 @@ async fn handle_left_room(
 						continue;
 					};
 
-					left_state_events.push(pdu.to_sync_state_event());
+					if filter.room.state.pdu_event_allowed(&pdu) {
+						left_state_events.push(pdu.to_sync_state_event());
+					}
 
 					i = i.wrapping_add(1);
 					if i % 100 == 0 {
