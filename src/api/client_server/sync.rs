@@ -279,9 +279,14 @@ pub(crate) async fn sync_events_route(
 			continue;
 		}
 
+		let state_events = invite_state_events
+			.into_iter()
+			.filter(|event| compiled_filter.room.state.raw_event_allowed(event))
+			.collect();
+
 		let invited_room = InvitedRoom {
 			invite_state: InviteState {
-				events: invite_state_events,
+				events: state_events,
 			},
 		};
 		if !invited_room.is_empty() {

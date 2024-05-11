@@ -16,13 +16,16 @@
 //! events in a particular category, we can skip work generating events in that
 //! category for the rejected room.
 
-use std::{collections::HashSet, hash::Hash};
+use std::{borrow::Cow, collections::HashSet, hash::Hash};
 
 use regex::RegexSet;
 use ruma::{
 	api::client::filter::{FilterDefinition, RoomEventFilter, RoomFilter, UrlFilter},
-	RoomId, UserId,
+	serde::Raw,
+	OwnedUserId, RoomId, UserId,
 };
+use serde::Deserialize;
+use tracing::error;
 
 use crate::{Error, PduEvent};
 
@@ -225,6 +228,38 @@ impl CompiledRoomEventFilter<'_> {
 			&& self.allowed_by_url_filter(pdu)
 	}
 
+	/// Similar to [`pdu_event_allowed`] but takes raw JSON.
+	pub(crate) fn raw_event_allowed<Ev>(&self, event: &Raw<Ev>) -> bool {
+		// We need to deserialize some of the fields from the raw json, but
+		// don't need all of them. Fully deserializing to a ruma event type
+		// would involve a lot extra copying and validation.
+		#[derive(Deserialize)]
+		struct LimitedEvent<'a> {
+			sender: OwnedUserId,
+			#[serde(rename = "type")]
+			kind: Cow<'a, str>,
+			url: Option<Cow<'a, str>>,
+		}
+
+		let event = match event.deserialize_as::<LimitedEvent<'_>>() {
+			Ok(event) => event,
+			Err(e) => {
+				// TODO: maybe rephrase this error, or propagate it to the caller
+				error!("invalid event in database: {e}");
+				return false;
+			},
+		};
+
+		let allowed_by_url_filter = match self.url_filter {
+			None => true,
+			Some(UrlFilter::EventsWithoutUrl) => event.url.is_none(),
+			Some(UrlFilter::EventsWithUrl) => event.url.is_some(),
+		};
+
+		allowed_by_url_filter && self.senders.allowed(&event.sender) && self.types.allowed(&event.kind)
+	}
+
+	// TODO: refactor this as well?
 	fn allowed_by_url_filter(&self, pdu: &PduEvent) -> bool {
 		let Some(filter) = self.url_filter else {
 			return true;
