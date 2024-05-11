@@ -776,7 +776,10 @@ async fn load_joined_room(
 								error!("Pdu in state not found: {}", id);
 								continue;
 							};
-							state_events.push(pdu);
+
+							if filter.room.state.pdu_event_allowed(&pdu) {
+								state_events.push(pdu);
+							}
 
 							i = i.wrapping_add(1);
 							if i % 100 == 0 {
@@ -793,11 +796,14 @@ async fn load_joined_room(
 								continue;
 							};
 
-							// This check is in case a bad user ID made it into the database
-							if let Ok(uid) = UserId::parse(&state_key) {
-								lazy_loaded.insert(uid);
+							if filter.room.state.pdu_event_allowed(&pdu) {
+								// This check is in case a bad user ID made it into the database
+								if let Ok(uid) = UserId::parse(&state_key) {
+									lazy_loaded.insert(uid);
+								}
+
+								state_events.push(pdu);
 							}
-							state_events.push(pdu);
 
 							i = i.wrapping_add(1);
 							if i % 100 == 0 {
@@ -940,6 +946,8 @@ async fn load_joined_room(
 					let mut state_events = delta_state_events;
 					let mut lazy_loaded = HashSet::new();
 
+					state_events.retain(|pdu| filter.room.state.pdu_event_allowed(pdu));
+
 					// Mark all member events we're returning as lazy-loaded
 					for pdu in &state_events {
 						if pdu.kind == TimelineEventType::RoomMember {
@@ -976,8 +984,10 @@ async fn load_joined_room(
 								&StateEventType::RoomMember,
 								event.sender.as_str(),
 							)? {
-								lazy_loaded.insert(event.sender.clone());
-								state_events.push(member_event);
+								if filter.room.state.pdu_event_allowed(&member_event) {
+									lazy_loaded.insert(event.sender.clone());
+									state_events.push(member_event);
+								}
 							}
 						}
 					}
