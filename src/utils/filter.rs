@@ -15,6 +15,10 @@
 //! top-level `filter.rooms.room`. Similarly, when a room is rejected for all
 //! events in a particular category, we can skip work generating events in that
 //! category for the rejected room.
+//!
+//! The second exception is ephemeral event types (`type`/`not_type` in
+//! `filter.room.ephemeral`). For these, we can skip work generating events of a
+//! particular type in `/sync` if it is rejected.
 
 use std::{borrow::Cow, collections::HashSet, hash::Hash};
 
@@ -213,6 +217,13 @@ impl CompiledRoomEventFilter<'_> {
 	/// [`CompiledRoomFilter::room_allowed`], if applicable.
 	pub(crate) fn room_allowed(&self, room_id: &RoomId) -> bool { self.rooms.allowed(room_id) }
 
+	/// Returns `true` if an event type is allowed by the `types` and
+	/// `not_types` fields.
+	///
+	/// This is mainly useful to skip work generating events for a particular
+	/// type, if that event type is always rejected by the filter.
+	pub(crate) fn type_allowed(&self, kind: &str) -> bool { self.types.allowed(kind) }
+
 	/// Returns `true` if a PDU event is allowed by the filter.
 	///
 	/// This tests against the `senders`, `not_senders`, `types`, `not_types`,
@@ -223,9 +234,7 @@ impl CompiledRoomEventFilter<'_> {
 	/// [`CompiledRoomEventFilter::room_allowed`] and
 	/// [`CompiledRoomFilter::room_allowed`].
 	pub(crate) fn pdu_event_allowed(&self, pdu: &PduEvent) -> bool {
-		self.senders.allowed(&pdu.sender)
-			&& self.types.allowed(&pdu.kind.to_string())
-			&& self.allowed_by_url_filter(pdu)
+		self.senders.allowed(&pdu.sender) && self.type_allowed(&pdu.kind.to_string()) && self.allowed_by_url_filter(pdu)
 	}
 
 	/// Similar to [`pdu_event_allowed`] but takes raw JSON.
@@ -256,7 +265,7 @@ impl CompiledRoomEventFilter<'_> {
 			Some(UrlFilter::EventsWithUrl) => event.url.is_some(),
 		};
 
-		allowed_by_url_filter && self.senders.allowed(&event.sender) && self.types.allowed(&event.kind)
+		allowed_by_url_filter && self.senders.allowed(&event.sender) && self.type_allowed(&event.kind)
 	}
 
 	// TODO: refactor this as well?
