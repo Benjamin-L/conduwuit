@@ -28,7 +28,7 @@ use ruma::{
 	uint, DeviceId, EventId, OwnedDeviceId, OwnedUserId, RoomId, UInt, UserId,
 };
 use tokio::sync::watch::Sender;
-use tracing::{debug, error, Instrument as _, Span};
+use tracing::{info, debug, error, Instrument as _, Span};
 
 use crate::{
 	service::{pdu::EventHash, rooms::timeline::PduCount},
@@ -92,6 +92,7 @@ pub(crate) async fn sync_events_route(
 		.entry((sender_user.clone(), sender_device.clone()))
 	{
 		Entry::Vacant(v) => {
+			info!("sync_request_cache:miss");
 			let (tx, rx) = tokio::sync::watch::channel(None);
 
 			v.insert((body.since.clone(), rx.clone()));
@@ -102,6 +103,7 @@ pub(crate) async fn sync_events_route(
 		},
 		Entry::Occupied(mut o) => {
 			if o.get().0 != body.since {
+				info!("sync_request_cache:miss");
 				let (tx, rx) = tokio::sync::watch::channel(None);
 
 				o.insert((body.since.clone(), rx.clone()));
@@ -112,6 +114,7 @@ pub(crate) async fn sync_events_route(
 
 				rx
 			} else {
+				info!("sync_request_cache:hit");
 				o.get().1.clone()
 			}
 		},
