@@ -356,6 +356,7 @@ pub(crate) async fn sync_events_route(
 						.map_err(|_| Error::bad_database("Invalid account event in database."))
 						.ok()
 				})
+				.filter(|event| compiled_filter.account_data.raw_event_allowed(event))
 				.collect(),
 		},
 		device_lists: DeviceLists {

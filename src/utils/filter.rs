@@ -139,6 +139,7 @@ impl WildcardAllowDenyList {
 /// filter fields support `'*'` wildcards.
 pub(crate) struct CompiledFilterDefinition<'a> {
 	pub(crate) presence: CompiledFilter<'a>,
+	pub(crate) account_data: CompiledFilter<'a>,
 	pub(crate) room: CompiledRoomFilter<'a>,
 }
 
@@ -170,6 +171,7 @@ impl<'a> TryFrom<&'a FilterDefinition> for CompiledFilterDefinition<'a> {
 	fn try_from(source: &'a FilterDefinition) -> Result<CompiledFilterDefinition<'a>, Error> {
 		Ok(CompiledFilterDefinition {
 			presence: (&source.presence).try_into()?,
+			account_data: (&source.account_data).try_into()?,
 			room: (&source.room).try_into()?,
 		})
 	}
@@ -212,6 +214,32 @@ impl<'a> TryFrom<&'a RoomEventFilter> for CompiledRoomEventFilter<'a> {
 			senders: AllowDenyList::from_slices(source.senders.as_deref(), &source.not_senders),
 			url_filter: source.url_filter,
 		})
+	}
+}
+
+impl CompiledFilter<'_> {
+	// TODO: docs
+	pub(crate) fn raw_event_allowed<Ev>(&self, event: &Raw<Ev>) -> bool {
+		// We need to deserialize some of the fields from the raw json, but
+		// don't need all of them. Fully deserializing to a ruma event type
+		// would involve a lot extra copying and validation.
+		#[derive(Deserialize)]
+		struct LimitedEvent<'a> {
+			sender: OwnedUserId,
+			#[serde(rename = "type")]
+			kind: Cow<'a, str>,
+		}
+
+		let event = match event.deserialize_as::<LimitedEvent<'_>>() {
+			Ok(event) => event,
+			Err(e) => {
+				// TODO: maybe rephrase this error, or propagate it to the caller
+				error!("invalid event in database: {e}");
+				return false;
+			},
+		};
+
+		self.senders.allowed(&event.sender) && self.types.allowed(&event.kind)
 	}
 }
 
