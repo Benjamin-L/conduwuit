@@ -792,7 +792,7 @@ async fn load_joined_room(
 								continue;
 							};
 
-							if filter.room.state.pdu_event_allowed(&pdu) {
+							if compiled_filter.room.state.pdu_event_allowed(&pdu) {
 								state_events.push(pdu);
 							}
 
