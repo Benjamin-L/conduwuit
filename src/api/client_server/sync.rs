@@ -961,7 +961,7 @@ async fn load_joined_room(
 					let mut state_events = delta_state_events;
 					let mut lazy_loaded = HashSet::new();
 
-					state_events.retain(|pdu| filter.room.state.pdu_event_allowed(pdu));
+					state_events.retain(|pdu| compiled_filter.room.state.pdu_event_allowed(pdu));
 
 					// Mark all member events we're returning as lazy-loaded
 					for pdu in &state_events {
