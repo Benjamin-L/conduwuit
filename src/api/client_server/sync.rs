@@ -1096,7 +1096,10 @@ async fn load_joined_room(
 			);
 		}
 
-		if filter.room.ephemeral.type_allowed(TypingEventContent::TYPE)
+		if compiled_filter
+			.room
+			.ephemeral
+			.type_allowed(TypingEventContent::TYPE)
 			&& services().rooms.typing.last_typing_update(room_id).await? > since
 		{
 			let edu = services().rooms.typing.typings_all(room_id).await?;
