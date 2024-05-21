@@ -811,7 +811,7 @@ async fn load_joined_room(
 								continue;
 							};
 
-							if filter.room.state.pdu_event_allowed(&pdu) {
+							if compiled_filter.room.state.pdu_event_allowed(&pdu) {
 								// This check is in case a bad user ID made it into the database
 								if let Ok(uid) = UserId::parse(&state_key) {
 									lazy_loaded.insert(uid);
