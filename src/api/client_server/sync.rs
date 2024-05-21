@@ -1064,6 +1064,21 @@ async fn load_joined_room(
 		vec![]
 	};
 
+	let account_data_events = if filter.room.account_data.room_allowed(room_id) {
+		services()
+			.account_data
+			.changes_since(Some(room_id), sender_user, since)?
+			.into_iter()
+			.filter_map(|(_, v)| {
+				serde_json::from_str(v.json().get())
+					.map_err(|_| Error::bad_database("Invalid account event in database."))
+					.ok()
+			})
+			.collect()
+	} else {
+		vec![]
+	};
+
 	// Save the state after this sync so we can send the correct state diff next
 	// sync
 	services()
@@ -1073,16 +1088,7 @@ async fn load_joined_room(
 
 	Ok(JoinedRoom {
 		account_data: RoomAccountData {
-			events: services()
-				.account_data
-				.changes_since(Some(room_id), sender_user, since)?
-				.into_iter()
-				.filter_map(|(_, v)| {
-					serde_json::from_str(v.json().get())
-						.map_err(|_| Error::bad_database("Invalid account event in database."))
-						.ok()
-				})
-				.collect(),
+			events: account_data_events,
 		},
 		summary: RoomSummary {
 			heroes,
