@@ -1075,7 +1075,7 @@ async fn load_joined_room(
 		.collect();
 
 	let mut edus = vec![];
-	if filter.room.ephemeral.room_allowed(room_id) {
+	if compiled_filter.room.ephemeral.room_allowed(room_id) {
 		// We only filter on event type for ephemeral events because none of the other
 		// filter parameters apply to the specific ephemeral events we're generating
 		// (m.room.receipt and m.room.typing). If we add fields to either of these
