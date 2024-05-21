@@ -24,7 +24,7 @@ use std::{borrow::Cow, collections::HashSet, hash::Hash};
 
 use regex::RegexSet;
 use ruma::{
-	api::client::filter::{FilterDefinition, RoomEventFilter, RoomFilter, UrlFilter},
+	api::client::filter::{Filter, FilterDefinition, RoomEventFilter, RoomFilter, UrlFilter},
 	serde::Raw,
 	OwnedUserId, RoomId, UserId,
 };
@@ -138,7 +138,13 @@ impl WildcardAllowDenyList {
 /// `types`/`not_types`, this is a [`WildcardAllowDenyList`], because the type
 /// filter fields support `'*'` wildcards.
 pub(crate) struct CompiledFilterDefinition<'a> {
+	pub(crate) presence: CompiledFilter<'a>,
 	pub(crate) room: CompiledRoomFilter<'a>,
+}
+
+pub(crate) struct CompiledFilter<'a> {
+	pub(crate) types: WildcardAllowDenyList,
+	pub(crate) senders: AllowDenyList<'a, UserId>,
 }
 
 pub(crate) struct CompiledRoomFilter<'a> {
@@ -163,7 +169,19 @@ impl<'a> TryFrom<&'a FilterDefinition> for CompiledFilterDefinition<'a> {
 
 	fn try_from(source: &'a FilterDefinition) -> Result<CompiledFilterDefinition<'a>, Error> {
 		Ok(CompiledFilterDefinition {
+			presence: (&source.presence).try_into()?,
 			room: (&source.room).try_into()?,
+		})
+	}
+}
+
+impl<'a> TryFrom<&'a Filter> for CompiledFilter<'a> {
+	type Error = Error;
+
+	fn try_from(source: &'a Filter) -> Result<CompiledFilter<'a>, Error> {
+		Ok(CompiledFilter {
+			types: WildcardAllowDenyList::new(source.types.as_deref(), &source.not_types)?,
+			senders: AllowDenyList::from_slices(source.senders.as_deref(), &source.not_senders),
 		})
 	}
 }

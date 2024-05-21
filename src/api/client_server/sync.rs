@@ -22,7 +22,7 @@ use ruma::{
 		uiaa::UiaaResponse,
 	},
 	events::{
-		presence::PresenceEvent,
+		presence::{PresenceEvent, PresenceEventContent},
 		receipt::ReceiptEventContent,
 		room::member::{MembershipState, RoomMemberEventContent},
 		typing::TypingEventContent,
@@ -112,7 +112,7 @@ pub(crate) async fn sync_events_route(
 			.unwrap_or_default(),
 	};
 	let Ok(compiled_filter) = CompiledFilterDefinition::try_from(&filter) else {
-		return Err(Error::BadRequest(ErrorKind::InvalidParam, "invalid 'filter' parameter"));
+		return Err(Error::BadRequest(ErrorKind::InvalidParam, "invalid 'filter' parameter").into());
 	};
 
 	let (lazy_load_enabled, lazy_load_send_redundant) = match filter.room.state.lazy_load_options {
@@ -145,8 +145,13 @@ pub(crate) async fn sync_events_route(
 			.filter_map(Result::ok),
 	);
 
-	if services().globals.allow_local_presence() {
-		process_presence_updates(&mut presence_updates, since, &sender_user).await?;
+	if services().globals.allow_local_presence()
+		&& compiled_filter
+			.presence
+			.types
+			.allowed(PresenceEventContent::TYPE)
+	{
+		process_presence_updates(&mut presence_updates, since, &sender_user, &compiled_filter).await?;
 	}
 
 	let room_filter = compiled_filter.room.rooms();
@@ -564,9 +569,14 @@ async fn handle_left_room(
 
 async fn process_presence_updates(
 	presence_updates: &mut HashMap<OwnedUserId, PresenceEvent>, since: u64, syncing_user: &OwnedUserId,
+	filter: &CompiledFilterDefinition<'_>,
 ) -> Result<()> {
 	// Take presence updates
 	for (user_id, _, presence_bytes) in services().presence.presence_since(since) {
+		if !filter.presence.senders.allowed(&user_id) {
+			continue;
+		}
+
 		if !services()
 			.rooms
 			.state_cache
