@@ -644,7 +644,7 @@ async fn load_joined_room(
 	};
 
 	let (timeline_pdus, oldest_timeline_event, limited) =
-		load_timeline(sender_user, room_id, sincecount, 10, Some(filter))?;
+		load_timeline(sender_user, room_id, sincecount, 10, Some(compiled_filter))?;
 
 	let send_notification_counts = !timeline_pdus.is_empty()
 		|| services()
