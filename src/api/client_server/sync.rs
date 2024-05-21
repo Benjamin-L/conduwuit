@@ -1121,7 +1121,7 @@ async fn load_joined_room(
 					.map_err(|_| Error::bad_database("Invalid account event in database."))
 					.ok()
 			})
-			.filter(|event| filter.room.account_data.raw_event_allowed(event))
+			.filter(|event| compiled_filter.room.account_data.raw_event_allowed(event))
 			.collect()
 	} else {
 		vec![]
