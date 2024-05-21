@@ -999,7 +999,7 @@ async fn load_joined_room(
 								&StateEventType::RoomMember,
 								event.sender.as_str(),
 							)? {
-								if filter.room.state.pdu_event_allowed(&member_event) {
+								if compiled_filter.room.state.pdu_event_allowed(&member_event) {
 									lazy_loaded.insert(event.sender.clone());
 									state_events.push(member_event);
 								}
