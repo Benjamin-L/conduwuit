@@ -676,7 +676,7 @@ async fn load_joined_room(
 		.user
 		.get_token_shortstatehash(room_id, since)?;
 
-	let skip_state_events = !filter.room.state.room_allowed(room_id);
+	let skip_state_events = !compiled_filter.room.state.room_allowed(room_id);
 
 	let (heroes, joined_member_count, invited_member_count, joined_since_last_sync, state_events) =
 		if timeline_pdus.is_empty() && since_shortstatehash == Some(current_shortstatehash) {
