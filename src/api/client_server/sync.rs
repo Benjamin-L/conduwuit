@@ -191,6 +191,7 @@ pub(crate) async fn sync_events_route(
 			lazy_load_enabled,
 			lazy_load_send_redundant,
 			full_state,
+			&filter,
 			&compiled_filter,
 			&mut device_list_updates,
 			&mut left_encrypted_users,
@@ -623,8 +624,8 @@ async fn process_presence_updates(
 async fn load_joined_room(
 	sender_user: &UserId, sender_device: &DeviceId, room_id: &RoomId, since: u64, sincecount: PduCount,
 	next_batch: u64, next_batchcount: PduCount, lazy_load_enabled: bool, lazy_load_send_redundant: bool,
-	full_state: bool, compiled_filter: &CompiledFilterDefinition<'_>, device_list_updates: &mut HashSet<OwnedUserId>,
-	left_encrypted_users: &mut HashSet<OwnedUserId>,
+	full_state: bool, filter: &FilterDefinition, compiled_filter: &CompiledFilterDefinition<'_>,
+	device_list_updates: &mut HashSet<OwnedUserId>, left_encrypted_users: &mut HashSet<OwnedUserId>,
 ) -> Result<JoinedRoom> {
 	// TODO: can we skip this when the room is filtered out?
 	{
@@ -643,8 +644,9 @@ async fn load_joined_room(
 		drop(insert_lock);
 	};
 
+	let timeline_limit = filter.room.timeline.limit.map_or(10, u64::from).min(100);
 	let (timeline_pdus, oldest_timeline_event, limited) =
-		load_timeline(sender_user, room_id, sincecount, 10, Some(compiled_filter))?;
+		load_timeline(sender_user, room_id, sincecount, timeline_limit, Some(compiled_filter))?;
 
 	let send_notification_counts = !timeline_pdus.is_empty()
 		|| services()
@@ -1111,10 +1113,10 @@ async fn load_joined_room(
 		}
 	}
 
-	let account_data_events = if filter.room.account_data.room_allowed(room_id) {
+	let account_data_events = if compiled_filter.room.account_data.room_allowed(room_id) {
 		services()
 			.account_data
-	let account_data_events = if compiled_filter.room.account_data.room_allowed(room_id) {
+			.changes_since(Some(room_id), sender_user, since)?
 			.into_iter()
 			.filter_map(|(_, v)| {
 				serde_json::from_str(v.json().get())
