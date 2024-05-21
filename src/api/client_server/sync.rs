@@ -1081,7 +1081,7 @@ async fn load_joined_room(
 		// (m.room.receipt and m.room.typing). If we add fields to either of these
 		// events, or start generating other event types in the future, we need to
 		// reevaluate this.
-		if filter
+		if compiled_filter
 			.room
 			.ephemeral
 			.type_allowed(ReceiptEventContent::TYPE)
