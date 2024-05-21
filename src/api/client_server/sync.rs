@@ -623,7 +623,7 @@ async fn process_presence_updates(
 async fn load_joined_room(
 	sender_user: &UserId, sender_device: &DeviceId, room_id: &RoomId, since: u64, sincecount: PduCount,
 	next_batch: u64, next_batchcount: PduCount, lazy_load_enabled: bool, lazy_load_send_redundant: bool,
-	full_state: bool, filter: &CompiledFilterDefinition<'_>, device_list_updates: &mut HashSet<OwnedUserId>,
+	full_state: bool, compiled_filter: &CompiledFilterDefinition<'_>, device_list_updates: &mut HashSet<OwnedUserId>,
 	left_encrypted_users: &mut HashSet<OwnedUserId>,
 ) -> Result<JoinedRoom> {
 	// TODO: can we skip this when the room is filtered out?
