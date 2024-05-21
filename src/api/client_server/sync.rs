@@ -1111,7 +1111,7 @@ async fn load_joined_room(
 	let account_data_events = if filter.room.account_data.room_allowed(room_id) {
 		services()
 			.account_data
-			.changes_since(Some(room_id), sender_user, since)?
+	let account_data_events = if compiled_filter.room.account_data.room_allowed(room_id) {
 			.into_iter()
 			.filter_map(|(_, v)| {
 				serde_json::from_str(v.json().get())
